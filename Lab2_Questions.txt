@@ -1,0 +1,196 @@
+1. How many courses does each department gives? Include departments (if
+any) that does not give any courses
+
+SELECT 
+    d.dcode, COUNT(c.ccode)
+FROM
+    course c
+        RIGHT JOIN
+    department d ON d.dcode = SUBSTR(c.ccode, 1, 2)
+GROUP BY d.dcode
+
+2. List the teachers that does not teach this semester
+
+SELECT 
+    t.tpid
+FROM
+    teacher t
+        LEFT JOIN
+    course c ON c.does_teach = t.tpid
+WHERE
+    c.does_teach IS NULL;
+
+
+3. List the members in the committee "Course Planning" (name,
+department)
+
+SELECT 
+    t.forename, t.surname, t.dept
+FROM
+    committee c
+        INNER JOIN
+    teach_comm tc ON tc.xcode = c.xcode
+        INNER JOIN
+    teacher t ON t.tpid = tc.tpid_teach_comm
+WHERE
+    c.name = 'Course Planning'
+
+4. List the teachers that are responsible for more than two courses
+
+SELECT 
+    t.forename, t.surname, COUNT(*) AS 'Number of Classes'
+FROM
+    course c
+        INNER JOIN
+    teacher t ON t.tpid = c.responsible
+GROUP BY t.forename , t.surname
+HAVING COUNT(*) > 2
+
+5. List the teachers that can teach the course "Linear Algebra"
+
+SELECT 
+    t.forename, t.surname
+FROM
+    course c
+        INNER JOIN
+    can_teach ct ON ct.ccode_can_teach = c.ccode
+        INNER JOIN
+    teacher t ON t.tpid = ct.tpid_can_teach
+WHERE
+    c.name = 'LINEAR ALGEBRA'
+
+6. List, for each student, the number of course the student takes.
+
+SELECT 
+    s.spid, s.name, COUNT(*) AS 'Number of Courses'
+FROM
+    student s
+        INNER JOIN
+    stud_course sc ON sc.spid = s.spid
+GROUP BY s.spid
+
+7. List for each course in Computer Science that has more than four
+students: the name of the course, the highest grade, the lowest grade,
+and the average grade on the course.
+
+SELECT 
+    c.ccode,
+    MAX(sc.grade) AS 'Highest Grade',
+    MIN(sc.grade) AS 'Lowest Grade',
+    ROUND(AVG(sc.grade)) AS 'Average Grade'
+FROM
+    course c
+        INNER JOIN
+    department d ON d.dcode = SUBSTR(c.ccode, 1, 2)
+        INNER JOIN
+    stud_course sc ON c.ccode = sc.ccode
+WHERE
+    d.name = 'Computer Science'
+GROUP BY c.ccode
+HAVING COUNT(*) > 4
+
+8. List name and (numeric) grade for the students on the course "CS
+Introduction" that have received the grade 'C'.
+
+SELECT 
+    s.name, sc.grade
+FROM
+    stud_course sc
+        INNER JOIN
+    course c ON c.ccode = sc.ccode
+        INNER JOIN
+    student s ON s.spid = sc.spid
+        INNER JOIN
+    grade g ON g.min <= sc.grade AND g.max >= sc.grade
+WHERE
+    c.name = 'CS INTRODUCTION'
+        AND g.letter = 'C'
+
+9. List for each course in Mathematics: the name of the course, the
+number of students and the teacher that does teach the course
+
+SELECT 
+    c.name, COUNT(sc.spid) AS 'Number of students', t.forename, t.surname
+FROM
+    course c
+        INNER JOIN
+    department d ON d.dcode = SUBSTR(c.ccode, 1, 2)
+        INNER JOIN
+    stud_course sc ON sc.ccode = c.ccode
+    Inner join teacher t ON t.tpid = c.does_teach
+WHERE
+    d.name = 'Mathematics'
+GROUP BY c.ccode
+
+10.List for each student that has failed a course: the student’s name, the
+name of the course and the grade
+
+SELECT 
+    s.name, c.name, sc.grade
+FROM
+    stud_course sc
+        INNER JOIN
+    grade g ON g.min <= sc.grade AND g.max >= sc.grade
+        INNER JOIN
+    student s ON s.spid = sc.spid
+        INNER JOIN
+    course c ON c.ccode = sc.ccode
+WHERE
+    g.letter = 'F'
+
+
+--------------------TRIGGERS----------------------
+CREATE DEFINER=`root`@`localhost` TRIGGER `grade_BEFORE_UPDATE` BEFORE UPDATE ON `grade` FOR EACH ROW BEGIN
+
+
+
+delimiter $$
+CREATE TRIGGER update_grade
+BEFORE UPDATE ON grade
+FOR EACH ROW
+BEGIN
+	IF ((NEW.max > 100) or (NEW.min > 100)) THEN 
+    SIGNAL SQLSTATE '45000'
+    SET MESSAGE_TEXT = 'Value too large';
+    end if;
+END$$
+delimiter;
+
+-----------------------------------------------------
+
+
+DELIMITER $$
+USE `lab2`$$
+CREATE DEFINER=`root`@`localhost` TRIGGER `before_insert` AFTER INSERT ON `course` FOR EACH ROW BEGIN
+	DECLARE X INT;
+    
+	select COUNT(*) INTO X
+	from course c
+	inner join teacher t_does ON t_does.tpid = c.does_teach 
+	inner join teacher t_resp ON t_resp.tpid = c.responsible
+	where t_does.dept != t_resp.dept;
+    
+    IF(X > 0) THEN 
+    SIGNAL SQLSTATE '45000'
+    SET MESSAGE_TEXT = 'Department not matching';
+    END IF;
+END$$
+DELIMITER ;
+
+-------------------------------------------------------
+
+USE `lab2`;
+
+DELIMITER $$
+
+USE `lab2`$$
+DROP TRIGGER IF EXISTS `lab2`.`student_BEFORE_DELETE` $$
+DELIMITER ;
+DROP TRIGGER IF EXISTS `lab2`.`student_BEFORE_DELET`;
+
+DELIMITER $$
+USE `lab2`$$
+CREATE DEFINER=`root`@`localhost` TRIGGER `student_BEFORE_DELETE` BEFORE DELETE ON `student` FOR EACH ROW BEGIN
+	INSERT INTO alumni_students SELECT OLD.spid, OLD.name;
+END$$
+DELIMITER ;
